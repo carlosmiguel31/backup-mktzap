@@ -1,0 +1,271 @@
+body {
+  font-family: 'Poppins', sans-serif;
+}
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;                /* ativa flexbox */
+  justify-content: center;      /* centraliza na horizontal */
+  align-items: center;          /* centraliza na vertical */
+  font-family: 'Poppins', sans-serif;
+  background: url('/bg.webp') no-repeat center center fixed;
+  background-size: cover;
+}
+.logo {
+  width: 130px;   /* tamanho da largura */
+  height: auto;   /* mantém a proporção */
+  margin-bottom: 20px; /* espaço entre o logo e o formulário */
+}
+
+
+.container {
+  width: 450px;
+  background: linear-gradient(135deg, #1E22AA, #00BFB2);
+  backdrop-filter: blur(10px);
+  box-shadow: 5px 4px 15px #616fff;
+  border-radius: 50px;
+  padding: 45px;
+}
+
+.container h1 {
+  text-align: center;
+  font-size: 25px;
+  color: #fff;
+  background: url("./assets/bg.webp") no-repeat center center fixed;
+  font-family: 'Poppins', sans-serif;
+}
+
+.container .input-field {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  margin: 30px auto;
+}
+
+.input-field input {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  outline: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 40px;
+  font-size: 16px;
+  color: #fff;
+  padding: 20px 45px 20px 25px;
+  font-family: 'Poppins', sans-serif;
+
+}
+
+.input-field input::placeholder {
+  color: #fff;
+}
+
+.input-field .icon {
+  position: absolute;
+  right: 25px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #F2A900;
+}
+
+.container .recall-forget {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14.5px;
+  margin: -15px 0 15px;
+  color: #fff;
+}
+
+.recall-forget label {
+  accent-color: #fff;
+  margin-right: 8px;
+  color: #fff;
+}
+
+.recall-forget a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.recall-forget a:hover {
+  text-decoration: underline;
+}
+
+.container button {
+  width: 100%;
+  height: 45px;
+  background: #F2A900;
+  border: none;
+  outline: none;
+  border-radius: 40px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  font-size: 16px;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: none;
+}
+
+/* ===== Toast (popup lateral) ===== */
+.toastContainer {
+  position: fixed;
+  bottom: 20px;  /* antes era top */
+  right: 20px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toastContainer .logo{
+  width: 40px;
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.18);
+  padding: 12px 14px;
+  min-width: 320px;
+  max-width: min(92vw, 420px);
+  border: 1px solid rgba(2, 6, 23, 0.06);
+
+  /* Animação de entrada */
+  animation: toastIn 260ms cubic-bezier(.2,.7,.3,1) forwards;
+  transform: translateX(24px);
+  opacity: 0;
+}
+
+@keyframes toastIn {
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toastImg {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: linear-gradient(135deg, #1E22AA, #00BFB2);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+}
+
+.toastImg.placeholder {
+  font-size: 20px;
+}
+
+.toastBody {
+  display: grid;
+  gap: 4px;
+}
+
+.toastTitle {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.toastMsg {
+  font-size: 13px;
+  color: #334155;
+}
+
+.toastClose {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: #475569;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+}
+.toastClose:hover { background: #f1f5f9; }
+
+/* Barra de progresso */
+.toastProgressWrap {
+  height: 4px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.toastProgress {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #F2A900, #00BFB2);
+  transform-origin: left center;
+  animation-name: toastShrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes toastShrink {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* Toast Login - inferior direito */
+.toastContainerBottomRight {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toast.toastLogin {
+  min-width: 360px;   /* maior que o normal */
+  max-width: 420px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.2);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  animation: toastIn 260ms cubic-bezier(.2,.7,.3,1) forwards;
+}
+
+.toast.toastLogin .toastBody .toastMsg {
+  font-size: 14px;
+}
+
+.toast.toastLogin .toastTitle {
+  font-size: 16px;
+  font-weight: 800;
+  color: #ff4d4f; /* destaque de erro */
+}
+
+.toast.toastLogin .toastProgressWrap {
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.toast.toastLogin .toastProgress {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff4d4f, #f2a900);
+  transform-origin: left center;
+  animation-name: toastShrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
