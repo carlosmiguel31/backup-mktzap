@@ -3,35 +3,61 @@ import session from "express-session";
 import cors from "cors";
 import dotenv from "dotenv";
 import pg from "pg";
-import PDFDocument from "pdfkit"; // << NOVO
+import PDFDocument from "pdfkit";
 
 dotenv.config();
 const { Pool } = pg;
 
 const app = express();
-const port = process.env.PORT || 3000;
 
-// ==== login DEV (mantenha só em dev) ====
-const ADMIN_LOGIN = process.env.ADMIN_LOGIN;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+/* ========= Server ========= */
+const PORT = Number(process.env.PORT || 8000);
+const HOST = process.env.HOST || "0.0.0.0";
+app.set("trust proxy", 1); // atrás do Nginx
 
+/* ========= Admin (credenciais) =========
+ * Em produção, defina ADMIN_LOGIN/ADMIN_PASSWORD no .env.
+ * (Se quiser habilitar fallback "admin/Une@1234" em prod,
+ *  coloque AUTH_DEV_FALLBACK=true no .env)
+ */
+const DEV_FALLBACK =
+  (process.env.AUTH_DEV_FALLBACK || "false").toLowerCase() === "true";
+
+const useDevDefaults =
+  process.env.NODE_ENV !== "production" || DEV_FALLBACK;
+
+const ADMIN_LOGIN = process.env.ADMIN_LOGIN || (useDevDefaults ? "admin" : "");
+const ADMIN_PASSWORD =
+  process.env.ADMIN_PASSWORD || (useDevDefaults ? "Une@1234" : "");
+
+/* ========= Postgres ========= */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   keepAlive: true,
+  ssl:
+    String(process.env.DATABASE_SSL || "").toLowerCase() === "true"
+      ? { rejectUnauthorized: false }
+      : undefined,
 });
 
-const allowed = (process.env.FRONTEND_ORIGIN || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  app.use(cors({
-    origin: (origin, cb) => {
-    if (!origin || allowed.includes(origin)) return cb(null, true);
-    cb(new Error('CORS: origin not allowed'));
-  },
-  credentials: true,
-}));
+/* ========= CORS & Body =========
+ * Como o front e o back rodam no mesmo host/porta por trás do Nginx,
+ * refletir a Origin é o suficiente. (credentials: true)
+ */
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+
+/* ========= Sessão ========= */
+const cookieSecure =
+  (process.env.SESSION_SECURE || "").toLowerCase() === "true"; // true se HTTPS
+const cookieSameSite = process.env.SESSION_SAMESITE || "lax";  // 'lax' ou 'none' (se HTTPS)
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "dev_secret",
@@ -39,22 +65,36 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production", 
-    }
+      sameSite: cookieSameSite,
+      secure: cookieSecure,
+      // maxAge: 1000 * 60 * 60 * 8, // opcional: 8h
+    },
   })
 );
-app.set("trust proxy", 1);
 
-
-function requireAuth(req, _res, next) {
-  if (req.session?.login !== ADMIN_LOGIN) return _res.status(401).json({ ok:false, message:"Não autenticado" });
+/* ========= Auth middleware ========= */
+function requireAuth(req, res, next) {
+  // Liberação total opcional para testes: AUTH_DISABLED=true
+  if ((process.env.AUTH_DISABLED || "false").toLowerCase() === "true") {
+    return next();
+  }
+  if (!req.session?.login) {
+    return res.status(401).json({ ok: false, message: "Não autenticado" });
+  }
   return next();
 }
 
-app.get("/", (_req, res) => res.json({ ok: true }));
+/* ========= Helpers ========= */
+function sanitizeFilename(s) {
+  return String(s).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 100) || "arquivo";
+}
 
-app.get("/health/db", async (_req, res) => {
+/* ========= Health ========= */
+const healthHandler = (_req, res) => res.status(200).json({ ok: true });
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
+
+app.get(["/health/db", "/api/health/db"], async (_req, res) => {
   try {
     const r = await pool.query("SELECT now()");
     res.json({ ok: true, time: r.rows[0].now });
@@ -63,29 +103,39 @@ app.get("/health/db", async (_req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
-  const { login, password } = req.body;
-  if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
-    req.session.login = ADMIN_LOGIN;
-    return res.json({ success: true, user: ADMIN_LOGIN });
+/* ========= Auth ========= */
+const loginHandler = (req, res) => {
+  const { login, password } = req.body || {};
+  const ok =
+    ADMIN_LOGIN &&
+    login === ADMIN_LOGIN &&
+    password === ADMIN_PASSWORD;
+
+  if (ok) {
+    req.session.login = login; // guarda o usuário logado
+    return res.json({ success: true, user: login });
   }
-  return res
-    .status(401)
-    .json({ success: false, message: "Usuário ou senha inválidos" });
-});
+  return res.status(401).json({ success: false, message: "Usuário ou senha inválidos" });
+};
 
-app.get("/session", (req, res) =>
-  res.json({ loggedIn: !!req.session?.login, user: req.session?.login || null })
-);
+const sessionHandler = (req, res) =>
+  res.json({ loggedIn: !!req.session?.login, user: req.session?.login || null });
 
-app.post("/logout", (req, res) =>
+const logoutHandler = (req, res) =>
   req.session.destroy((err) =>
     err ? res.status(500).json({ success: false }) : res.json({ success: true })
-  )
-);
+  );
 
-// Lista protocolos (histórico)
-app.get("/api/historico", requireAuth, async (req, res) => {
+app.post("/login", loginHandler);
+app.get("/session", sessionHandler);
+app.post("/logout", logoutHandler);
+
+app.post("/api/login", loginHandler);
+app.get("/api/session", sessionHandler);
+app.post("/api/logout", logoutHandler);
+
+/* ========= Histórico - lista ========= */
+const historicoListHandler = async (req, res) => {
   try {
     const phone = String(req.query.phone || "").replace(/\D/g, "");
     const month = String(req.query.month || "").trim();
@@ -178,7 +228,6 @@ app.get("/api/historico", requireAuth, async (req, res) => {
     `;
 
     const rowsR = await pool.query(rowsSql, [...params, pageSize, offset]);
-
     res.json({ page, pageSize, total, data: rowsR.rows });
   } catch (e) {
     console.error("ERRO /api/historico:", e);
@@ -186,10 +235,13 @@ app.get("/api/historico", requireAuth, async (req, res) => {
       .status(500)
       .json({ message: "Erro ao listar histórico", detail: e?.message || String(e) });
   }
-});
+};
 
-// Mensagens de um protocolo
-app.get("/api/historico/:id/mensagens", requireAuth, async (req, res) => {
+app.get("/api/historico", requireAuth, historicoListHandler);
+app.get("/historico", requireAuth, historicoListHandler); // compat
+
+/* ========= Histórico - mensagens ========= */
+const historicoMsgsHandler = async (req, res) => {
   try {
     const idParam = String(req.params.id);
 
@@ -219,19 +271,16 @@ app.get("/api/historico/:id/mensagens", requireAuth, async (req, res) => {
       detail: e?.message || String(e),
     });
   }
-});
+};
 
-/* ===== Util simples p/ nome de arquivo ===== */
-function sanitizeFilename(s) {
-  return String(s).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 100) || "arquivo";
-}
+app.get("/api/historico/:id/mensagens", requireAuth, historicoMsgsHandler);
+app.get("/historico/:id/mensagens", requireAuth, historicoMsgsHandler); // compat
 
-/* ===== Exportar PDF do histórico (por protocolo) ===== */
-app.get("/api/historico/:id/export.pdf", requireAuth, async (req, res) => {
+/* ========= Export PDF ========= */
+const historicoExportPdfHandler = async (req, res) => {
   try {
     const idParam = String(req.params.id);
 
-    // Meta do protocolo
     const metaSql = `
       WITH fl AS (
         SELECT protocol, phone, created_at
@@ -284,7 +333,6 @@ app.get("/api/historico/:id/export.pdf", requireAuth, async (req, res) => {
       total_msgs: 0,
     };
 
-    // Mensagens
     const msgsSql = `
       SELECT
         c.id,
@@ -303,29 +351,29 @@ app.get("/api/historico/:id/export.pdf", requireAuth, async (req, res) => {
     const msgsR = await pool.query(msgsSql, [idParam]);
     const msgs = msgsR.rows || [];
 
-    // Cabeçalhos HTTP
     const filename = `historico_${sanitizeFilename(idParam)}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
-    // Monta PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     doc.pipe(res);
 
-    // Título e meta
     doc.font("Helvetica-Bold").fontSize(18).text("Histórico de Atendimento");
     doc.moveDown(0.5);
     doc.font("Helvetica").fontSize(12).text(`Protocolo: ${meta.protocolo || idParam}`);
     doc.text(`Telefone: ${meta.cliente_contato || "—"}`);
     doc.text(`Atendente: ${meta.atendente_nome || "—"}`);
-    doc.text(`Aberto em: ${meta.data_abertura ? new Date(meta.data_abertura).toLocaleString() : "—"}`);
-    doc.text(`Última mensagem: ${meta.ultima_msg_em ? new Date(meta.ultima_msg_em).toLocaleString() : "—"}`);
+    doc.text(
+      `Aberto em: ${meta.data_abertura ? new Date(meta.data_abertura).toLocaleString() : "—"}`
+    );
+    doc.text(
+      `Última mensagem: ${meta.ultima_msg_em ? new Date(meta.ultima_msg_em).toLocaleString() : "—"}`
+    );
     doc.text(`Total de mensagens: ${meta.total_msgs}`);
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#cccccc").stroke();
     doc.moveDown();
 
-    // Mensagens
     msgs.forEach((m, idx) => {
       const isOperador = !!m.sent_by_operator;
       const autor = isOperador ? (m.nome || "Operador") : "Cliente";
@@ -353,6 +401,13 @@ app.get("/api/historico/:id/export.pdf", requireAuth, async (req, res) => {
       detail: e?.message || String(e),
     });
   }
-});
+};
+app.get("/api/historico/:id/export.pdf", requireAuth, historicoExportPdfHandler);
+app.get("/historico/:id/export.pdf", requireAuth, historicoExportPdfHandler);
 
-app.listen(port, () => console.log(`API rodando na porta ${port}`));
+/* ========= Start ========= */
+app.listen(PORT, HOST, () => {
+  console.log(
+    `API rodando em http://${HOST}:${PORT} (NODE_ENV=${process.env.NODE_ENV || "dev"})`
+  );
+});

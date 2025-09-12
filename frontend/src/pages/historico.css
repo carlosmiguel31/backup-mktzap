@@ -1,3 +1,16 @@
+::-webkit-scrollbar {
+  width: 10px;              /* largura da barra */
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;       /* fundo do trilho */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #1E22AA, #00BFB2);       /* cor do "puxador" */
+  border-radius: 10px;
+}
 /* Container principal */
 .root {
   padding: 20px;
@@ -19,6 +32,8 @@
   color: #fff;
   z-index: 1000;
   box-shadow: 0 2px 6px rgba(255, 255, 255, 0.2);
+  user-select: none;
+  pointer-events: none;
 }
 
 .header h2 {
@@ -45,6 +60,8 @@
 
 .form label .month{
   margin-bottom: 8px;
+  user-select: none;
+  pointer-events: none;
 }
 
 label {
@@ -53,6 +70,8 @@ label {
   margin-bottom: 9px;
   display: block;
   margin-top: 9px;
+    user-select: none;
+  pointer-events: none;
 }
 
 
@@ -83,6 +102,7 @@ label {
   transition: all 0.2s;
   border: 2px solid rgba(255, 255, 255, 0.2);
   display: block;
+  user-select: none;
 }
 .btn:hover {
   background: #d89500;
@@ -112,6 +132,8 @@ label {
   color: #333;
   font-weight: 700;
   margin-bottom: 50%;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Card */
@@ -278,6 +300,8 @@ label {
 }
 .searchBtn {
   padding: 0 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;
+  user-select: none;
+  pointer-events: none;
 }
 
 .modalBody {
@@ -343,6 +367,8 @@ body.no-scroll { overflow: hidden; }
   display: flex;
   flex-direction: column;
   gap: 10px;
+  user-select: none;
+  pointer-events: none;
 }
 
 .toastContainer .logo{

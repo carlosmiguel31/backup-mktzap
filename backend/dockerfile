@@ -1,12 +1,18 @@
-FROM node:20-alpine
-RUN addgroup -S app && adduser -S app -G app
+# ========= deps (instala só produção) =========
+FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
+# cache do npm ajuda muito em VPS
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --no-audit --no-fund
+
+# ========= runner =========
+FROM node:20-alpine
+WORKDIR /app
 ENV NODE_ENV=production
-EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health/db || exit 1
-USER app
-CMD ["node","index.js"]
+# copia node_modules prontos
+COPY --from=deps /app/node_modules ./node_modules
+# copia o código
+COPY . .
+EXPOSE 8000
+CMD ["node", "src/index.js"]

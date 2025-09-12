@@ -2,36 +2,68 @@ import { useEffect, useMemo, useState } from "react";
 import { SlDoc, SlClose } from "react-icons/sl";
 import { HiChevronDoubleDown, HiChevronDoubleUp } from "react-icons/hi2";
 import "./historico.css";
-import Popup from "@/components/Popup.jsx";
+import Popup from "@/Components/Popup.jsx";
 
-/** ===== API base URL ===== */
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+/** ===== Base URL da API ===== */
+const API = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
 
-/** ===== util de data robusto (evita "Invalid Date") ===== */
+/** ===== datas ===== */
 function parseDate(val) {
   if (!val) return null;
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val;
 
   let s = String(val);
-
-  // aceita epoch numérico
   if (/^\d+$/.test(s)) {
     const d = new Date(Number(s));
     return Number.isNaN(d.getTime()) ? null : d;
   }
-
-  // "YYYY-MM-DD HH:mm:ss(.SSS)" → "YYYY-MM-DDTHH:mm:ss(.SSS)Z"
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(s)) {
     s = s.replace(" ", "T") + "Z";
   }
-
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-
 function fmtDate(val) {
   const d = parseDate(val);
   return d ? d.toLocaleString() : "—";
+}
+
+/** ===== HTTP helpers ===== */
+async function fetchJson(pathOrUrl, options = {}) {
+  const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
+  const r = await fetch(url, { credentials: "include", ...options });
+  const ct = r.headers.get("content-type") || "";
+  const raw = await r.text().catch(() => "");
+  let data = raw;
+  if (ct.includes("application/json")) {
+    try { data = JSON.parse(raw); } catch {}
+  }
+  if (!r.ok) {
+    const msg = (data && data.message) || (typeof data === "string" ? data : "") || `HTTP ${r.status}`;
+    const err = new Error(msg);
+    err.status = r.status;
+    err.detail = data?.detail;
+    throw err;
+  }
+  return data;
+}
+
+async function ensureLogin() {
+  try {
+    const s = await fetchJson(`/session`);
+    if (s.loggedIn) return true;
+  } catch { /* tenta login */ }
+
+  // para testes/staging; em produção o usuário usa tela de login
+  const r = await fetch(`${API}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ login: "admin", password: "Une@1234" }),
+  });
+  if (!r.ok) return false;
+  const j = await r.json().catch(() => ({}));
+  return j.success === true;
 }
 
 /** ===== UI ===== */
@@ -46,44 +78,6 @@ function Bubble({ side, text, when }) {
   );
 }
 
-/** ===== helpers HTTP ===== */
-async function fetchJson(path, options = {}) {
-  const r = await fetch(`${API_URL}${path}`, {
-    credentials: "include",
-    ...options,
-  });
-  if (!r.ok) {
-    let payload;
-    try {
-      payload = await r.json();
-    } catch {
-      payload = { message: await r.text() };
-    }
-    const err = new Error(payload?.message || `HTTP ${r.status}`);
-    err.status = r.status;
-    err.detail = payload?.detail;
-    throw err;
-  }
-  return r.json();
-}
-
-async function ensureLogin() {
-  const s = await fetchJson("/session");
-  if (s.loggedIn) return true;
-
-  const r = await fetch(`${API_URL}/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ login: "admin", password: "Une@1234" }),
-  });
-
-  if (!r.ok) return false;
-  const j = await r.json();
-  return j.success === true;
-}
-
-/** ===== Modal de histórico + mensagens ===== */
 function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
   const [q, setQ] = useState("");
 
@@ -91,9 +85,7 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
     const prev = document.body.style.overflow;
     document.body.classList.add("no-scroll");
     document.body.style.overflow = "hidden";
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
@@ -103,15 +95,12 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
   }, [onClose]);
 
   const filtered = q
-    ? msgs.filter((m) =>
-        (m.message || "").toLowerCase().includes(q.toLowerCase())
-      )
+    ? msgs.filter((m) => (m.message || "").toLowerCase().includes(q.toLowerCase()))
     : msgs;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className="modalHeader">
           <div className="mhLeft">
             <div className="mhTitle">Consulta de Histórico</div>
@@ -122,18 +111,11 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
           </button>
         </div>
 
-        {/* Barra de info + busca */}
         <div className="modalToolbar">
           <div className="infoGrid">
-            <div>
-              <strong>Telefone do Cliente: {item.cliente_contato ?? "—"}</strong>
-            </div>
-            <div>
-              <strong>Atendente: {item.atendente_nome ?? "—"}</strong>
-            </div>
-            <div>
-              <strong>Aberto em: {fmtDate(item.data_abertura)}</strong>
-            </div>
+            <div><strong>Telefone do Cliente: {item.cliente_contato ?? "—"}</strong></div>
+            <div><strong>Atendente: {item.atendente_nome ?? "—"}</strong></div>
+            <div><strong>Aberto em: {fmtDate(item.data_abertura)}</strong></div>
           </div>
           <div className="searchRow">
             <input
@@ -142,13 +124,10 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <button className="searchBtn" type="button">
-              🔍
-            </button>
+            <button className="searchBtn" type="button">🔍</button>
           </div>
         </div>
 
-        {/* Corpo rolável */}
         <div className="modalBody">
           <div className="messages">
             {err && <div className="empty">Erro: {err}</div>}
@@ -170,19 +149,13 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="modalFooter">
           <div className="footerActions">
-            <button
-              className="btn secondary"
-              type="button"
-              onClick={() => onExport(item.id)}
-            >
+            <button className="btn secondary" type="button" onClick={() => onExport(item.id)}>
               Gerar PDF <SlDoc className="icon" />
             </button>
             <button className="btn primary" type="button" onClick={onClose}>
-              Fechar
-              <SlClose className="icon" />
+              Fechar <SlClose className="icon" />
             </button>
           </div>
         </div>
@@ -191,7 +164,6 @@ function HistoryModal({ item, msgs, loading, err, onClose, onExport }) {
   );
 }
 
-/** ===== Card de cada protocolo ===== */
 function Card({ item, expanded, onToggle, onExport }) {
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -200,14 +172,11 @@ function Card({ item, expanded, onToggle, onExport }) {
   useEffect(() => {
     if (!expanded) return;
     let abort = false;
-
     (async () => {
       setLoading(true);
       setErr("");
       try {
-        const data = await fetchJson(
-          `/api/historico/${encodeURIComponent(item.id)}/mensagens`
-        );
+        const data = await fetchJson(`/historico/${encodeURIComponent(item.id)}/mensagens`);
         if (!abort) setMsgs(data || []);
       } catch (e) {
         if (!abort) setErr(e.message || "Falha ao carregar mensagens");
@@ -215,10 +184,7 @@ function Card({ item, expanded, onToggle, onExport }) {
         if (!abort) setLoading(false);
       }
     })();
-
-    return () => {
-      abort = true;
-    };
+    return () => { abort = true; };
   }, [expanded, item.id]);
 
   return (
@@ -229,11 +195,7 @@ function Card({ item, expanded, onToggle, onExport }) {
         <div>Atendente: {item.atendente_nome ?? "—"}</div>
         <div>Data: {fmtDate(item.data_abertura)}</div>
         <button className="btn" type="button" onClick={onToggle}>
-          {expanded ? (
-            <HiChevronDoubleUp className="icon" />
-          ) : (
-            <HiChevronDoubleDown className="icon" />
-          )}
+          {expanded ? <HiChevronDoubleUp className="icon" /> : <HiChevronDoubleDown className="icon" />}
         </button>
       </div>
 
@@ -251,7 +213,6 @@ function Card({ item, expanded, onToggle, onExport }) {
   );
 }
 
-/** ===== Página ===== */
 export default function Historico({ showPopup, onClosePopup }) {
   const [phone, setPhone] = useState("");
   const [rows, setRows] = useState([]);
@@ -270,11 +231,7 @@ export default function Historico({ showPopup, onClosePopup }) {
 
   useEffect(() => {
     (async () => {
-      try {
-        await ensureLogin();
-      } catch {
-        /* ignore */
-      }
+      try { await ensureLogin(); } catch { /* ignore */ }
     })();
   }, []);
 
@@ -293,7 +250,7 @@ export default function Historico({ showPopup, onClosePopup }) {
       });
       if (month) params.set("month", month);
 
-      const j = await fetchJson(`/api/historico?${params.toString()}`);
+      const j = await fetchJson(`/historico?${params.toString()}`);
       setRows(j.data || []);
       setTotal(j.total || 0);
       setPage(p);
@@ -307,10 +264,8 @@ export default function Historico({ showPopup, onClosePopup }) {
     }
   }
 
-  function exportCsv(id) {
-    window.location.href = `${API_URL}/api/historico/${encodeURIComponent(
-      id
-    )}/export.csv`;
+  function exportPdf(id) {
+    window.location.href = `${API}/historico/${encodeURIComponent(id)}/export.pdf`;
   }
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -340,10 +295,7 @@ export default function Historico({ showPopup, onClosePopup }) {
 
       <div className="header">
         <h2>Histórico</h2>
-        <p>
-          Utilize o filtro de número abaixo para obter o histórico dos
-          atendimentos realizados.
-        </p>
+        <p>Utilize o filtro de número abaixo para obter o histórico dos atendimentos realizados.</p>
       </div>
 
       <form
@@ -353,9 +305,7 @@ export default function Historico({ showPopup, onClosePopup }) {
           if (canSearch) search(1);
         }}
       >
-        <label htmlFor="phone" style={{ fontWeight: 700 }}>
-          Número de contato
-        </label>
+        <label htmlFor="phone" style={{ fontWeight: 700 }}>Número de contato</label>
         <input
           id="phone"
           className="input"
@@ -364,9 +314,7 @@ export default function Historico({ showPopup, onClosePopup }) {
           onChange={(e) => setPhone(e.target.value)}
         />
 
-        <label htmlFor="month" style={{ fontWeight: 700 }}>
-          Mês
-        </label>
+        <label htmlFor="month" style={{ fontWeight: 700 }}>Mês</label>
         <input
           id="month"
           type="month"
@@ -379,16 +327,10 @@ export default function Historico({ showPopup, onClosePopup }) {
           {loading ? "Buscando…" : "Pesquisar"}
         </button>
 
-        <span className="hint">
-          {total ? `${total} resultados encontrados` : ""}
-        </span>
+        <span className="hint">{total ? `${total} resultados encontrados` : ""}</span>
       </form>
 
-      {err && (
-        <div className="empty" style={{ marginTop: 8 }}>
-          Erro: {err}
-        </div>
-      )}
+      {err && <div className="empty" style={{ marginTop: 8 }}>Erro: {err}</div>}
 
       <div className="results">
         {visibleRows.map((item) => (
@@ -396,10 +338,8 @@ export default function Historico({ showPopup, onClosePopup }) {
             key={item.id}
             item={item}
             expanded={expandedId === item.id}
-            onToggle={() =>
-              setExpandedId(expandedId === item.id ? null : item.id)
-            }
-            onExport={exportCsv}
+            onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+            onExport={exportPdf}
           />
         ))}
         {!visibleRows.length && !loading && !err && (
@@ -417,9 +357,7 @@ export default function Historico({ showPopup, onClosePopup }) {
           >
             Anterior
           </button>
-          <span>
-            Página {page} de {pages}
-          </span>
+          <span>Pagina {page} de {pages}</span>
           <button
             className="btn"
             type="button"

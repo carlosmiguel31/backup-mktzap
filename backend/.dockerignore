@@ -1,4 +1,9 @@
 node_modules
-npm-debug.log
-.DS_Store
+dist
+build
+.cache
+.vite
+coverage
 .git
+.DS_Store
+npm-debug.log*

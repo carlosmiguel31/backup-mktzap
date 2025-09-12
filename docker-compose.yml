@@ -1,78 +1,30 @@
-version: "3.9"
-
-networks:
-  web:
-  traefik:
-
-volumes:
-  traefik_letsencrypt:
-
 services:
-  traefik:
-    image: traefik:v3.1
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      # redireciona http -> https
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      # Let's Encrypt
-      - --certificatesresolvers.le.acme.email=${LE_EMAIL}
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.le.acme.httpchallenge=true
-      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - traefik_letsencrypt:/letsencrypt
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    restart: unless-stopped
-    networks:
-      - traefik
-
-  api:
+  backend:
     build:
       context: ./backend
+      dockerfile: dockerfile
+    env_file:
+      - ./backend/.env
     environment:
-      # === PREENCHA NO PORTAINER (Environment variables da stack) ===
-      - NODE_ENV=production
-      - PORT=3000
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}     # ex: https://miguelzx.com.br,https://www.miguelzx.com.br
-      - DATABASE_URL=${DATABASE_URL}
-      - SESSION_SECRET=${SESSION_SECRET}
-      - ADMIN_LOGIN=${ADMIN_LOGIN}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-    networks:
-      - web
-      - traefik
+      PORT: 8000
+      HOST: 0.0.0.0
+    expose:
+      - "8000"
+    networks: [appnet]
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.api.rule=Host(`api.miguelzx.com.br`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=le
-      - traefik.http.services.api.loadbalancer.server.port=3000
 
-  web:
+  nginx:
     build:
-      context: ./frontend
+      context: ./frontend       # usa o Dockerfile do front (o multi-stage que gera /dist e copia p/ nginx)
+      dockerfile: dockerfile
       args:
-        # Usa a API pelo domínio público (evita localhost!)
-        VITE_API_URL: "https://api.miguelzx.com.br"
+        VITE_API_URL: "/api"
+    ports:
+      - "80:80"
     depends_on:
-      - api
-    networks:
-      - web
-      - traefik
+      - backend
+    networks: [appnet]
     restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.web.rule=Host(`miguelzx.com.br`,`www.miguelzx.com.br`)
-      - traefik.http.routers.web.entrypoints=websecure
-      - traefik.http.routers.web.tls.certresolver=le
-      - traefik.http.services.web.loadbalancer.server.port=80
+
+networks:
+  appnet:

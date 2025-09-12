@@ -1,7 +1,7 @@
 import "./App.css";
-import Login from "@/Components/Login";
-import Historico from "@/pages/historico";
-import Toast from "@/components/Toast";
+import Login from "@/Components/Login.jsx";
+import Historico from "@/pages/historico.jsx";
+import Toast from "@/Components/Toast.jsx";
 import { useState } from "react";
 
 function App() {

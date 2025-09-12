@@ -1,39 +1,45 @@
 import { useState } from "react";
 import { FaUser, FaLock } from "react-icons/fa";
-import Toast from "@/components/Toast"; // importe o toast
+import Toast from "@/Components/Toast.jsx";
 import "./Login.css";
 import "@fontsource/poppins";
 import "@fontsource/poppins/500.css";
 import "@fontsource/poppins/700.css";
 
-const Login = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState(""); 
-  const [password, setPassword] = useState(""); 
-  const [errorToast, setErrorToast] = useState(null); // mensagem de erro
+const API = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, { credentials: "include", ...opts });
+  const ct = res.headers.get("content-type") || "";
+  const raw = await res.text().catch(() => "");
+  let data = raw;
+  if (ct.includes("application/json")) {
+    try { data = JSON.parse(raw); } catch {}
+  }
+  if (!res.ok) {
+    const msg = (data && data.message) || (typeof data === "string" ? data : "") || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export default function Login({ onLoginSuccess }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorToast, setErrorToast] = useState(null);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/login`, {
+      await fetchJSON(`${API}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ login: username, password }),
-        credentials: "include",
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        sessionStorage.setItem("loginOk", "1");
-        onLoginSuccess?.();
-      } else {
-        // exibe toast de erro
-        setErrorToast(data.message || "Login ou senha incorretos!");
-      }
-    } catch (error) {
-      setErrorToast("Erro ao conectar com o servidor!");
-      console.error("Error ao fazer login:", error);
+      sessionStorage.setItem("loginOk", "1");
+      onLoginSuccess?.();
+    } catch (err) {
+      setErrorToast(err.message || "Login ou senha incorretos!");
     }
   };
 
@@ -71,7 +77,6 @@ const Login = ({ onLoginSuccess }) => {
         <button type="submit">Login</button>
       </form>
 
-      {/* Toast de erro */}
       {errorToast && (
         <Toast
           type="error"
@@ -82,6 +87,4 @@ const Login = ({ onLoginSuccess }) => {
       )}
     </div>
   );
-};
-
-export default Login;
+}
